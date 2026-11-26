@@ -1,51 +1,99 @@
+"""COMSATS University Islamabad — Streamlit chatbot UI.
+
+Retrieval (Chroma + CrossEncoder reranking) loads at startup; the Groq
+chat model is created lazily, so the app still opens (with a clear
+warning) when GROQ_API_KEY is not set, instead of crashing.
+"""
+
+import logging
+import os
 import re
-import json
+import time
+from pathlib import Path
+
 import dotenv
 import streamlit as st
+from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
 from sentence_transformers import CrossEncoder
 
+from comsats_facts import get_deterministic_facts, get_deterministic_resources
+
 dotenv.load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
+log = logging.getLogger("comsats_ui")
+
+BASE_DIR = Path(__file__).resolve().parent
+CHROMA_DIR = str(BASE_DIR / "chroma_comsats_db")
+
+# Groq retired llama-3.3-70b-versatile for free/developer tiers on
+# 2026-08-16 (every call now returns 404 model_not_found). The current
+# Groq-recommended replacement is openai/gpt-oss-120b. Override with
+# GROQ_MODEL if Groq retires this one too.
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+
+st.set_page_config(page_title="CUI Assistant", page_icon="🎓")
 
 # ------------------------------------------------------------------
 # Setup (ek hi baar chalta hai, Streamlit cache karta hai)
 # ------------------------------------------------------------------
 
+
 @st.cache_resource
 def load_components():
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
     vector_store = Chroma(
         collection_name="comsats_knowledge",
         embedding_function=embeddings,
-        persist_directory="./chroma_comsats_db",
+        persist_directory=CHROMA_DIR,
     )
     reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
-    return vector_store, reranker, model
+    return vector_store, reranker
 
 
 @st.cache_resource
-def load_url_to_content():
-    """Force-include mechanism ke liye — poora raw scraped content, chunk nahi."""
+def get_llm():
+    """Groq chat model, or None when it cannot be created (no API key,
+    or client construction failed)."""
+    if not os.environ.get("GROQ_API_KEY"):
+        return None
     try:
-        with open("output/all_documents.json", "r", encoding="utf-8") as f:
-            raw_docs = json.load(f)
-        return {d["url"]: d["content"] for d in raw_docs if d.get("content")}
-    except FileNotFoundError:
-        return {}
+        return ChatGroq(model=GROQ_MODEL, temperature=0)
+    except Exception as e:
+        log.warning("Could not create Groq client: %s", e)
+        return None
 
 
-vector_store, reranker, model = load_components()
-url_to_content = load_url_to_content()
+def _collection_count(store) -> int:
+    """Number of vectors in the store. Uses Chroma's (private) collection
+    handle when available and falls back to the public get() API."""
+    try:
+        return store._collection.count()
+    except Exception:
+        return len(store.get()["ids"])
 
-if vector_store._collection.count() == 0:
+
+vector_store, reranker = load_components()
+
+if _collection_count(vector_store) == 0:
     st.error(
         "Knowledge base khali hai! Pehle terminal mein 'python comsats_rag.py' "
         "ek dafa chalao taake vector store ban sake, phir is app ko refresh karo."
     )
     st.stop()
+
+if not os.environ.get("GROQ_API_KEY"):
+    st.warning(
+        "GROQ_API_KEY set nahi hai — AI jawab nahi de sakega. "
+        "Apni Groq API key .env file mein ya app ke Secrets mein add karein. "
+        "Campus/department/program jaisi fixed maloomat phir bhi mil jayengi."
+    )
 
 SYSTEM_PROMPT = (
     "You are CUI Assistant, a helpful chatbot for COMSATS University Islamabad. "
@@ -65,82 +113,10 @@ SYSTEM_PROMPT = (
 )
 
 
-# ------------------------------------------------------------------
-# Deterministic facts — RAG (vector similarity) enumerable/list-type facts
-# ke liye unreliable hoti hai. Ye chand high-value facts hamesha keyword-match
-# se guaranteed inject hote hain, retrieval ke upar depend nahi karte.
-# ------------------------------------------------------------------
-DETERMINISTIC_FACTS = {
-    "campus": (
-        "COMSATS University Islamabad (CUI) has 7 physical campuses: "
-        "Islamabad (Principal Seat, established 1998), Abbottabad (2001), "
-        "Wah (2001), Lahore (2002), Attock (2004), Sahiwal (2006), and "
-        "Vehari (2008), plus a Virtual Campus (2012) for online/distance learning."
-    ),
-    "department": (
-        "COMSATS University Islamabad (Islamabad Campus) has 13 departments: "
-        "Architecture, Art & Design, Computer Science, Electrical Engineering, "
-        "Management Sciences, Mathematics, Physics, Chemistry, Bio Sciences, "
-        "Humanities, Meteorology, Economics, and Health Informatics."
-    ),
-    "program": (
-        "COMSATS University Islamabad (Islamabad Campus) offers undergraduate (BS), "
-        "graduate (MS), and doctoral (PhD) programs spread across its 13 departments: "
-        "Architecture, Art & Design, Computer Science, Electrical Engineering, "
-        "Management Sciences, Mathematics, Physics, Chemistry, Bio Sciences, "
-        "Humanities, Meteorology, Economics, and Health Informatics. The exact "
-        "programs offered vary by department — ask about a specific department "
-        "(e.g. 'What programs does Computer Science offer?') for details."
-    ),
-    "scholarship": (
-        "For scholarships, please visit: https://ww2.comsats.edu.pk/scholarships/"
-    ),
-}
-
-
-def get_deterministic_facts(query: str) -> str:
-    import difflib
-    q = query.lower()
-    words = re.findall(r"[a-z]+", q)
-    matched = []
-    for kw, fact in DETERMINISTIC_FACTS.items():
-        if re.search(rf"\b{kw}", q):
-            matched.append(fact)
-            continue
-        if any(difflib.SequenceMatcher(None, kw, w).ratio() > 0.75 for w in words):
-            matched.append(fact)
-    return "\n\n".join(matched)
-
-
-# ------------------------------------------------------------------
-# Force-include real content — kuch topics (jaise scholarships) mein RAG
-# retrieval consistently weak hoti hai (bohat saari pages, embedding kisi
-# ek ko highest score de deta hai baaki chhoot jati hain). Isliye poora
-# real scraped content force-include karte hain, guessed fact nahi.
-# ------------------------------------------------------------------
-FORCE_INCLUDE_TOPICS = {}
-MAX_FORCE_INCLUDE_CHARS = 1500
-
-
-def get_force_included_context(query: str) -> str:
-    q = query.lower()
-    parts = []
-    for pattern, url_substrings in FORCE_INCLUDE_TOPICS.items():
-        if not re.search(pattern, q):
-            continue
-        for sub in url_substrings:
-            for url, content in url_to_content.items():
-                if sub in url:
-                    parts.append(content[:MAX_FORCE_INCLUDE_CHARS])
-                    break
-    return "\n\n---\n\n".join(parts)
-
-
 def retrieve_with_sources(query: str, fetch_k: int = 20, k: int = 8, top_n: int = 6):
     """Top chunks + unke source URLs dono return karta hai. MMR se diverse
     chunks alag-alag pages se aate hain, sirf top-score wale nahi."""
     deterministic = get_deterministic_facts(query)
-    forced = get_force_included_context(query)
 
     results = vector_store.max_marginal_relevance_search(query, k=k, fetch_k=fetch_k)
     top = []
@@ -153,8 +129,6 @@ def retrieve_with_sources(query: str, fetch_k: int = 20, k: int = 8, top_n: int 
     context_parts = []
     if deterministic:
         context_parts.append(deterministic)
-    if forced:
-        context_parts.append(forced)
     context_parts.extend(doc.page_content for doc, _ in top)
     context = "\n\n---\n\n".join(context_parts)
 
@@ -172,8 +146,16 @@ def retrieve_with_sources(query: str, fetch_k: int = 20, k: int = 8, top_n: int 
 
 
 DOWNLOAD_INTENT_KEYWORDS = [
-    "download", "prospectus", "pamphlet", "brochure", "pdf", "form",
-    "link", "website", "apply online", "portal",
+    "download",
+    "prospectus",
+    "pamphlet",
+    "brochure",
+    "pdf",
+    "form",
+    "link",
+    "website",
+    "apply online",
+    "portal",
 ]
 
 
@@ -182,28 +164,6 @@ def wants_source_link(query: str) -> bool:
     # Whole-word match use karo (\b boundaries), warna "form" jaisa chhota
     # keyword "information" ke andar bhi match ho jata hai — galat trigger.
     return any(re.search(rf"\b{re.escape(kw)}\b", q) for kw in DOWNLOAD_INTENT_KEYWORDS)
-
-
-# Kuch high-value OFFICIAL resources jo hamesha dikhne chahiye jab related
-# topic poocha jaye — chahe user ne "download"/"link" jaisa word na bola ho.
-# Ye scraped text se zyada reliable hain kyunke ye current official notice/ad
-# hai (fee structure text mein alag batches ka data mix ho sakta hai aur
-# confusing/outdated ho sakta hai).
-DETERMINISTIC_RESOURCES = {
-    r"\badmission\b.*\bfall\b|\bfall\b.*\badmission\b|\badmissions?\b": [
-        ("Fall 2026 Admission Notice (Official)",
-         "https://islamabad.comsats.edu.pk/NEFiles/Admission-fall-2026-isb.jpg"),
-    ],
-}
-
-
-def get_deterministic_resources(query: str):
-    q = query.lower()
-    matched = []
-    for pattern, resources in DETERMINISTIC_RESOURCES.items():
-        if re.search(pattern, q):
-            matched.extend(resources)
-    return matched
 
 
 def ask(query: str):
@@ -221,8 +181,29 @@ def ask(query: str):
     try:
         context, sources = retrieve_with_sources(query)
     except Exception as e:
-        print(f"[retrieval error] {e}")
-        return "Sorry, I'm having trouble searching the knowledge base right now. Please try again.", []
+        log.warning("[retrieval error] %s", e)
+        return (
+            "Sorry, I'm having trouble searching the knowledge base right now. Please try again.",
+            [],
+        )
+
+    model = get_llm()
+    if model is None:
+        if not os.environ.get("GROQ_API_KEY"):
+            return (
+                (
+                    "The AI service is not configured yet (GROQ_API_KEY is missing). "
+                    "Please add your Groq API key to the app's secrets and try again."
+                ),
+                [],
+            )
+        return (
+            (
+                "Sorry, I couldn't connect to the AI service right now "
+                "(could be a rate limit or network issue). Please try again shortly."
+            ),
+            [],
+        )
 
     prompt = f"""{SYSTEM_PROMPT}
 
@@ -241,8 +222,9 @@ Answer:"""
             except Exception as e:
                 last_error = e
                 err_str = str(e).lower()
-                if attempt == 1 and ("rate" in err_str or "429" in err_str or "timeout" in err_str):
-                    import time
+                if attempt == 1 and (
+                    "rate" in err_str or "429" in err_str or "timeout" in err_str
+                ):
                     time.sleep(3)
                     continue
                 raise
@@ -250,7 +232,7 @@ Answer:"""
             raise last_error
         answer = response.content
     except Exception as e:
-        print(f"[Groq API error] {e}")
+        log.warning("[Groq API error] %s", e)
         answer = (
             "Sorry, I couldn't connect to the AI service right now "
             "(could be a rate limit or network issue). Please try again shortly."
@@ -273,21 +255,22 @@ Answer:"""
 # Streamlit UI
 # ------------------------------------------------------------------
 
-st.set_page_config(page_title="CUI Assistant", page_icon="🎓")
 st.title("🎓 COMSATS University Islamabad")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": (
-            "Greetings! I am here to provide information about COMSATS University "
-            "Islamabad (CUI) 🎓. Whether you are seeking guidance on admissions, "
-            "academic programs, or any other aspect of CUI, I am here to help.\n\n"
-            "How may I assist you today? 😊"
-        ),
-        "sources": [],
-    })
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": (
+                "Greetings! I am here to provide information about COMSATS University "
+                "Islamabad (CUI) 🎓. Whether you are seeking guidance on admissions, "
+                "academic programs, or any other aspect of CUI, I am here to help.\n\n"
+                "How may I assist you today? 😊"
+            ),
+            "sources": [],
+        }
+    )
 
 # ---- Quick suggestion buttons ----
 st.write("**Quick suggestions:**")
