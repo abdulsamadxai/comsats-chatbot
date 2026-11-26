@@ -36,9 +36,14 @@ CHROMA_DIR = str(BASE_DIR / "chroma_comsats_db")
 # GROQ_MODEL if Groq retires this one too.
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
+# Brand assets (official COMSATS site, verified live Nov 26, 2026).
+LOGO_URL = "https://www.comsats.edu.pk/images/logo.png"
+CAMPUS_IMG_URL = "https://comsats.edu.pk/assets/img/campuses/islamabad-campus.jpg"
+ADMISSIONS_URL = "https://admissions.comsats.edu.pk"
+
 st.set_page_config(
     page_title="CUI Assistant | COMSATS University Islamabad",
-    page_icon="🎓",
+    page_icon=LOGO_URL,
     layout="centered",
 )
 
@@ -259,38 +264,55 @@ Answer:"""
 # Streamlit UI
 # ------------------------------------------------------------------
 
-# --- COMSATS portal styling (institutional blue, like admissions.comsats.edu.pk) ---
-LOGO_URL = "https://www.comsats.edu.pk/images/logo.png"
-ADMISSIONS_URL = "https://admissions.comsats.edu.pk"
-
+# --- COMSATS design (from comsats.edu.pk, checked Nov 26, 2026) ---
+# Real brand assets: official logo, Islamabad campus photo, Spring 2027
+# admissions. No emojis anywhere — icons are inline SVG.
 st.markdown(
     """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header[data-testid="stHeader"] {background: transparent;}
-    .stApp {background: #f5f7fd;}
-    .block-container {padding-top: 1.2rem; max-width: 780px;}
-    .cui-header {display: flex; align-items: center; gap: 14px; background: #ffffff; border: 1px solid #e3e9f7; border-radius: 16px; padding: 12px 18px; box-shadow: 0 1px 4px rgba(15, 37, 87, 0.06);}
+    .stApp {background: #f4f7fe; font-family: 'Inter', sans-serif;}
+    .block-container {padding-top: 1rem; max-width: 820px;}
+    h1, h2, h3, .cui-title, .cui-hero h1, .cui-card b, .cui-stat b {font-family: 'Plus Jakarta Sans', sans-serif;}
+    .cui-header {display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.92); border: 1px solid #e3e9f7; border-radius: 18px; padding: 12px 18px; box-shadow: 0 2px 10px rgba(15,37,87,0.07); backdrop-filter: blur(8px);}
     .cui-header img {height: 54px; width: auto;}
     .cui-title {font-size: 21px; font-weight: 800; color: #0f2557; line-height: 1.15;}
     .cui-subtitle {font-size: 11px; letter-spacing: 2.5px; color: #5b6b8c; font-weight: 700; margin-top: 2px;}
-    .cui-apply {margin-left: auto; background: #1d4ed8; color: #ffffff !important; padding: 10px 20px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none; box-shadow: 0 4px 14px rgba(29, 78, 216, 0.35); white-space: nowrap;}
-    .cui-apply:hover {background: #1e40af; color: #ffffff !important;}
-    .cui-hero {background: linear-gradient(115deg, #0a2a6b 0%, #123a8f 55%, #1d4ed8 100%); border-radius: 20px; padding: 30px 28px 26px; color: #ffffff; margin-top: 14px; position: relative; overflow: hidden;}
-    .cui-hero-dots {position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.28) 1.2px, transparent 1.2px); background-size: 22px 22px; opacity: 0.35;}
-    .cui-hero-inner {position: relative;}
-    .cui-badge {display: inline-flex; align-items: center; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.35); border-radius: 999px; padding: 6px 14px; font-size: 11px; letter-spacing: 2px; font-weight: 700;}
-    .cui-badge-dot {width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 8px;}
-    .cui-hero h1 {font-size: 40px; line-height: 1.08; font-weight: 800; margin: 16px 0 10px; color: #ffffff;}
-    .cui-hero p {color: #c7d6ff; font-size: 15px; line-height: 1.55; margin: 0; max-width: 560px;}
-    [data-testid="stChatMessage"] {background: #ffffff; border: 1px solid #e3e9f7; border-radius: 16px; box-shadow: 0 1px 3px rgba(15, 37, 87, 0.05);}
-    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {background: #1d4ed8; border-color: #1d4ed8; color: #ffffff;}
+    .cui-apply {margin-left: auto; background: linear-gradient(135deg, #1d4ed8, #2563eb); color: #ffffff !important; padding: 11px 22px; border-radius: 12px; font-weight: 700; font-size: 14px; text-decoration: none; box-shadow: 0 6px 16px rgba(29,78,216,0.35); white-space: nowrap;}
+    .cui-apply:hover {box-shadow: 0 8px 22px rgba(29,78,216,0.45); color: #ffffff !important;}
+    .cui-hero {position: relative; border-radius: 24px; overflow: hidden; margin-top: 14px; min-height: 320px; display: flex; align-items: flex-end; box-shadow: 0 12px 32px rgba(10,36,99,0.25);}
+    .cui-hero-bg {position: absolute; inset: 0; background: url('https://comsats.edu.pk/assets/img/campuses/islamabad-campus.jpg') center/cover no-repeat;}
+    .cui-hero-shade {position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7,22,64,0.10) 0%, rgba(7,22,64,0.45) 55%, rgba(7,22,64,0.90) 100%);}
+    .cui-hero-inner {position: relative; padding: 30px 28px 26px;}
+    .cui-badge {display: inline-flex; align-items: center; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.40); border-radius: 999px; padding: 7px 15px; font-size: 11px; letter-spacing: 2px; font-weight: 700; color: #ffffff; backdrop-filter: blur(4px);}
+    .cui-badge-dot {width: 8px; height: 8px; border-radius: 50%; background: #e9a319; display: inline-block; margin-right: 8px; box-shadow: 0 0 0 3px rgba(233,163,25,0.30);}
+    .cui-hero h1 {font-size: 42px; line-height: 1.08; font-weight: 800; margin: 16px 0 10px; color: #ffffff;}
+    .cui-hero p {color: #dbe6ff; font-size: 15px; line-height: 1.6; margin: 0; max-width: 580px;}
+    .cui-stats {display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px;}
+    .cui-stat {background: #ffffff; border: 1px solid #e3e9f7; border-radius: 16px; padding: 14px 8px; text-align: center; box-shadow: 0 1px 4px rgba(15,37,87,0.05);}
+    .cui-stat b {display: block; font-size: 22px; color: #0f2557;}
+    .cui-stat span {font-size: 10.5px; letter-spacing: 1.5px; color: #5b6b8c; font-weight: 700;}
+    .cui-section {font-size: 13px; letter-spacing: 2px; font-weight: 700; color: #5b6b8c; margin: 22px 0 0;}
+    .cui-cards {display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 10px;}
+    .cui-card {display: block; background: #ffffff; border: 1px solid #e3e9f7; border-radius: 18px; padding: 18px 14px 16px; text-decoration: none !important; box-shadow: 0 1px 4px rgba(15,37,87,0.05); transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;}
+    .cui-card:hover {transform: translateY(-3px); border-color: #1d4ed8; box-shadow: 0 12px 26px rgba(29,78,216,0.18);}
+    .cui-ic {width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 11px;}
+    .cui-ic svg {width: 24px; height: 24px; stroke: #ffffff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;}
+    .cui-ic-blue {background: linear-gradient(135deg, #1d4ed8, #3b82f6);}
+    .cui-ic-violet {background: linear-gradient(135deg, #7c3aed, #a855f7);}
+    .cui-ic-teal {background: linear-gradient(135deg, #0d9488, #14b8a6);}
+    .cui-ic-amber {background: linear-gradient(135deg, #d97706, #f59e0b);}
+    .cui-card b {display: block; font-size: 14px; color: #0f2557;}
+    .cui-card span {display: block; font-size: 12px; color: #5b6b8c; margin-top: 3px; line-height: 1.5;}
+    [data-testid="stChatMessage"] {background: #ffffff; border: 1px solid #e3e9f7; border-radius: 18px; box-shadow: 0 1px 3px rgba(15,37,87,0.05); padding: 14px 16px;}
+    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {background: linear-gradient(135deg, #1d4ed8, #2563eb); border-color: #1d4ed8; color: #ffffff;}
     [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) p {color: #ffffff;}
-    [data-testid="stButton"] > button {background: #ffffff; color: #1d4ed8; border: 1.5px solid #c7d6ff; border-radius: 999px; font-weight: 600; box-shadow: 0 1px 3px rgba(15, 37, 87, 0.06);}
-    [data-testid="stButton"] > button:hover {background: #1d4ed8; color: #ffffff; border-color: #1d4ed8;}
-    [data-testid="stButton"] > button:focus {box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.25); outline: none;}
-    .cui-footer {text-align: center; color: #5b6b8c; font-size: 12px; margin-top: 26px; padding-bottom: 10px;}
+    [data-testid="stChatInput"] > div {background: #ffffff; border: 1.5px solid #c7d6ff; border-radius: 16px; box-shadow: 0 8px 24px rgba(15,37,87,0.10);}
+    .cui-footer {text-align: center; color: #5b6b8c; font-size: 12px; line-height: 1.7; margin-top: 28px; padding-bottom: 12px;}
+    .cui-footer em {color: #0f2557;}
     .cui-footer a {color: #1d4ed8; text-decoration: none; font-weight: 600;}
     </style>
     """,
@@ -308,12 +330,19 @@ st.markdown(
       <a class="cui-apply" href="{ADMISSIONS_URL}" target="_blank">Apply now</a>
     </div>
     <div class="cui-hero">
-      <div class="cui-hero-dots"></div>
+      <div class="cui-hero-bg"></div>
+      <div class="cui-hero-shade"></div>
       <div class="cui-hero-inner">
-        <span class="cui-badge"><span class="cui-badge-dot"></span>ADMISSIONS OPEN AT 7 OF 7 CAMPUSES</span>
-        <h1>Become Pakistan's<br>next great COMSIAN</h1>
-        <p>Ask about admissions, programs, fees, scholarships and campuses at seven campuses of a top-ranked research university. One question, one clear answer.</p>
+        <span class="cui-badge"><span class="cui-badge-dot"></span>ADMISSIONS OPEN &middot; SPRING 2027</span>
+        <h1>Ask anything about<br>COMSATS University</h1>
+        <p>Admissions, programs, fees, scholarships and campuses &mdash; answered from official COMSATS pages, in seconds.</p>
       </div>
+    </div>
+    <div class="cui-stats">
+      <div class="cui-stat"><b>39,100+</b><span>STUDENTS</span></div>
+      <div class="cui-stat"><b>7</b><span>CAMPUSES</span></div>
+      <div class="cui-stat"><b>116+</b><span>PROGRAMS</span></div>
+      <div class="cui-stat"><b>1998</b><span>FOUNDED</span></div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -326,26 +355,57 @@ if "messages" not in st.session_state:
             "role": "assistant",
             "content": (
                 "Greetings! I am here to provide information about COMSATS University "
-                "Islamabad (CUI) 🎓. Whether you are seeking guidance on admissions, "
+                "Islamabad (CUI). Whether you are seeking guidance on admissions, "
                 "academic programs, or any other aspect of CUI, I am here to help.\n\n"
-                "How may I assist you today? 😊"
+                "How may I assist you today?"
             ),
             "sources": [],
         }
     )
 
-# ---- Quick suggestion buttons ----
-st.write("**Quick suggestions:**")
-cols = st.columns(4)
-suggestions = ["Admissions FALL 2026", "Campuses?", "Departments?", "Programs?"]
-clicked_suggestion = None
-for col, s in zip(cols, suggestions):
-    if col.button(s, use_container_width=True):
-        clicked_suggestion = s
+# ---- Suggestion cards (plain HTML links with SVG icons) ----
+# A card click reloads the page with ?q=<question>; the value is picked
+# up here, stored in session state, and the param is cleared so a
+# refresh never re-sends the question.
+if "pending_suggestion" not in st.session_state:
+    st.session_state.pending_suggestion = None
+_params = st.query_params
+if "q" in _params:
+    st.session_state.pending_suggestion = _params["q"]
+    st.query_params.clear()
+clicked_suggestion = st.session_state.pending_suggestion
+st.session_state.pending_suggestion = None
+
+st.markdown(
+    """
+    <div class="cui-section">START WITH A POPULAR QUESTION</div>
+    <div class="cui-cards">
+      <a class="cui-card" href="?q=Admissions%20Spring%202027">
+        <div class="cui-ic cui-ic-blue"><svg viewBox="0 0 24 24"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12.5V17c0 1.66 2.69 3 6 3s6-1.34 6-3v-4.5"/><path d="M22 10v6"/></svg></div>
+        <b>Admissions</b><span>Spring 2027 dates, merit and how to apply</span>
+      </a>
+      <a class="cui-card" href="?q=Campuses%3F">
+        <div class="cui-ic cui-ic-violet"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 9h.01M9 12h.01M9 15h.01M15 9h.01M15 12h.01M15 15h.01"/></svg></div>
+        <b>Campuses</b><span>Seven campuses across Pakistan</span>
+      </a>
+      <a class="cui-card" href="?q=Departments%3F">
+        <div class="cui-ic cui-ic-teal"><svg viewBox="0 0 24 24"><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/></svg></div>
+        <b>Departments</b><span>Faculties and departments at CUI</span>
+      </a>
+      <a class="cui-card" href="?q=Programs%3F">
+        <div class="cui-ic cui-ic-amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"/></svg></div>
+        <b>Programs</b><span>BS, MS and PhD programs from A to Z</span>
+      </a>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---- Show chat history ----
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    with st.chat_message(
+        msg["role"], avatar=LOGO_URL if msg["role"] == "assistant" else None
+    ):
         st.markdown(msg["content"])
         if msg["role"] == "assistant" and msg.get("sources"):
             st.markdown("**📎 Source / Download:**")
@@ -360,7 +420,7 @@ if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=LOGO_URL):
         with st.spinner("Thinking..."):
             answer, sources = ask(user_input)
         st.markdown(answer)
@@ -376,6 +436,7 @@ if user_input:
 st.markdown(
     """
     <div class="cui-footer">
+      <em>&ldquo;To become a world-class university through excellence in teaching, research, innovation and public service.&rdquo;</em><br>
       Answers come from official COMSATS pages. Confirm dates and fees on the
       <a href="https://admissions.comsats.edu.pk" target="_blank">official admission notice</a>
       or <a href="https://www.comsats.edu.pk" target="_blank">comsats.edu.pk</a>.
