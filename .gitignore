@@ -16,6 +16,8 @@ dist/
 venv/
 env/
 .pytest_cache/
+.ruff_cache/
+*.log
 
 # IDE / OS
 .vscode/
