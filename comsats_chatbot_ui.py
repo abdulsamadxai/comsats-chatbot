@@ -316,6 +316,32 @@ st.markdown(
     .cui-footer {text-align: center; color: #5b6b8c; font-size: 12px; line-height: 1.7; margin-top: 28px; padding-bottom: 12px;}
     .cui-footer em {color: #0f2557;}
     .cui-footer a {color: #1d4ed8; text-decoration: none; font-weight: 600;}
+    @media (max-width: 640px) {
+      .block-container {padding-left: 12px; padding-right: 12px; padding-top: 0.75rem;}
+      .cui-header {gap: 10px; padding: 10px 12px; border-radius: 14px;}
+      .cui-header img {height: 40px;}
+      .cui-title {font-size: 16px;}
+      .cui-subtitle {display: none;}
+      .cui-apply {padding: 9px 14px; font-size: 13px; border-radius: 10px;}
+      .cui-hero {min-height: 240px; border-radius: 18px; margin-top: 10px;}
+      .cui-hero-inner {padding: 20px 18px 18px;}
+      .cui-badge {font-size: 10px; letter-spacing: 1.5px; padding: 6px 12px;}
+      .cui-hero h1 {font-size: 28px; margin: 12px 0 8px;}
+      .cui-hero p {font-size: 13.5px;}
+      .cui-stats {grid-template-columns: repeat(2, 1fr); gap: 10px;}
+      .cui-stat {padding: 12px 6px;}
+      .cui-stat b {font-size: 19px;}
+      .cui-cards {grid-template-columns: repeat(2, 1fr); gap: 10px;}
+      .cui-card {padding: 14px 12px; border-radius: 16px;}
+      .cui-ic {width: 40px; height: 40px; border-radius: 12px; margin-bottom: 9px;}
+      .cui-card b {font-size: 13px;}
+      .cui-card span {font-size: 11.5px;}
+    }
+    @media (max-width: 380px) {
+      .cui-hero h1 {font-size: 25px;}
+      .cui-title {font-size: 15px;}
+      .cui-header img {height: 36px;}
+    }
     </style>
     """,
     unsafe_allow_html=True,
