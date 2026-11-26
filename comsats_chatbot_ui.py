@@ -286,8 +286,8 @@ st.markdown(
     .cui-apply {margin-left: auto; background: linear-gradient(135deg, #1d4ed8, #2563eb); color: #ffffff !important; padding: 11px 22px; border-radius: 12px; font-weight: 700; font-size: 14px; text-decoration: none; box-shadow: 0 6px 16px rgba(29,78,216,0.35); white-space: nowrap;}
     .cui-apply:hover {box-shadow: 0 8px 22px rgba(29,78,216,0.45); color: #ffffff !important;}
     .cui-hero {position: relative; border-radius: 24px; overflow: hidden; margin-top: 14px; min-height: 320px; display: flex; align-items: flex-end; box-shadow: 0 12px 32px rgba(10,36,99,0.25);}
-    .cui-hero-bg {position: absolute; inset: 0; background: url('https://raw.githubusercontent.com/abdulsamadxai/comsats-chatbot/main/assets/campus-hero.jpg') center/cover no-repeat;}
-    .cui-hero-shade {position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7,22,64,0.10) 0%, rgba(7,22,64,0.45) 55%, rgba(7,22,64,0.90) 100%);}
+    .cui-hero-bg {position: absolute; inset: 0; background: url('https://raw.githubusercontent.com/abdulsamadxai/comsats-chatbot/main/assets/campus-hero.jpg') center bottom/cover no-repeat;}
+    .cui-hero-shade {position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7,22,64,0.05) 0%, rgba(7,22,64,0.20) 55%, rgba(7,22,64,0.62) 100%);}
     .cui-hero-inner {position: relative; padding: 30px 28px 26px;}
     .cui-badge {display: inline-flex; align-items: center; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.40); border-radius: 999px; padding: 7px 15px; font-size: 11px; letter-spacing: 2px; font-weight: 700; color: #ffffff; backdrop-filter: blur(4px);}
     .cui-badge-dot {width: 8px; height: 8px; border-radius: 50%; background: #e9a319; display: inline-block; margin-right: 8px; box-shadow: 0 0 0 3px rgba(233,163,25,0.30);}
