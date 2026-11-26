@@ -37,7 +37,9 @@ CHROMA_DIR = str(BASE_DIR / "chroma_comsats_db")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # Brand assets (official COMSATS site, verified live Nov 26, 2026).
-LOGO_URL = "https://www.comsats.edu.pk/images/logo.png"
+# The logo is the university seal, upscaled 4x to 748x748 and committed
+# to the repo so the app does not depend on comsats.edu.pk being up.
+LOGO_URL = "https://raw.githubusercontent.com/abdulsamadxai/comsats-chatbot/main/assets/comsats-logo.png"
 CAMPUS_IMG_URL = "https://comsats.edu.pk/assets/img/campuses/islamabad-campus.jpg"
 ADMISSIONS_URL = "https://admissions.comsats.edu.pk"
 
