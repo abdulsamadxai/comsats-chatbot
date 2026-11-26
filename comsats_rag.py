@@ -1,20 +1,50 @@
+"""COMSATS University Islamabad — RAG pipeline + CLI chat.
+
+Vector store ingestion (Chroma + CrossEncoder reranking) and the
+question-answering flow. The Groq chat model is created lazily, so
+building/refreshing the vector store does NOT need a GROQ_API_KEY —
+only answering non-deterministic questions does.
+
+Usage:
+    python comsats_rag.py        # build the vector store if empty, then chat
+"""
+
+import json
+import logging
+import os
+import time
+from pathlib import Path
+
 import dotenv
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
-import json
-import re
+
+from comsats_facts import get_deterministic_facts, get_deterministic_resources
 
 dotenv.load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
+log = logging.getLogger("comsats_rag")
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_FILE = BASE_DIR / "output" / "all_documents.json"
+CHROMA_DIR = str(BASE_DIR / "chroma_comsats_db")
+
+# Groq retired llama-3.3-70b-versatile for free/developer tiers on
+# 2026-08-16 (every call now returns 404 model_not_found). The current
+# Groq-recommended replacement is openai/gpt-oss-120b. Override with
+# GROQ_MODEL if Groq retires this one too.
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # ------------------------------------------------------------------
 # 1) Load scraped COMSATS data (all_documents.json wali file se)
 # ------------------------------------------------------------------
-DATA_FILE = "output/all_documents.json"
-
 try:
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         raw_docs = json.load(f)
@@ -44,25 +74,23 @@ if not docs:
         f"Scraper dobara chalao aur check karo koi errors to nahi aaye."
     )
 
-print(f"Total documents loaded: {len(docs)}")
-
-# URL -> full (unchunked) content lookup — force-include mechanism ke liye
-# (RAG chunk-retrieval ke bagair, guaranteed real content pull karne ke liye)
-url_to_content = {d["url"]: d["content"] for d in raw_docs if d.get("content")}
+log.info("Total documents loaded: %d", len(docs))
 
 # ------------------------------------------------------------------
 # 2) Chunking (data bohat zyada hai, isliye chunk size chhota rakha)
 # ------------------------------------------------------------------
 splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
 chunks = splitter.split_documents(docs)
-print(f"Total chunks created: {len(chunks)}")
+log.info("Total chunks created: %d", len(chunks))
 
 # ------------------------------------------------------------------
 # 3) Embeddings (multilingual model — English + Roman Urdu queries dono
 #    ke liye behtar kaam karta hai, aapke education-chatbot project
 #    wale jaisa)
 # ------------------------------------------------------------------
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
 
 # ------------------------------------------------------------------
 # 4) Vector store (Chroma, persistent — sirf pehli dafa build karega)
@@ -70,117 +98,30 @@ embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-
 vector_store = Chroma(
     collection_name="comsats_knowledge",
     embedding_function=embeddings,
-    persist_directory="./chroma_comsats_db",
+    persist_directory=CHROMA_DIR,
 )
 
-if vector_store._collection.count() == 0:
-    print("Vector store khali hai, chunks add kar raha hun...")
+
+def _collection_count(store) -> int:
+    """Number of vectors in the store. Uses Chroma's (private) collection
+    handle when available and falls back to the public get() API."""
+    try:
+        return store._collection.count()
+    except Exception:
+        return len(store.get()["ids"])
+
+
+if _collection_count(vector_store) == 0:
+    log.info("Vector store khali hai, chunks add kar raha hun...")
     # ChromaDB ek baar mein max ~5461 documents accept karta hai,
     # isliye batches mein add kar rahe hain (500 per batch)
     batch_size = 500
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i : i + batch_size]
         vector_store.add_documents(batch)
-        print(f"Added batch {i // batch_size + 1} ({len(batch)} chunks)")
+        log.info("Added batch %d (%d chunks)", i // batch_size + 1, len(batch))
 else:
-    print("Vector store pehle se mojood hai, dobara build nahi kar raha.")
-
-# ------------------------------------------------------------------
-# 4.5) Deterministic facts — kuch cheezein (poori list/count) RAG se
-#      reliably nahi milti kyunke vector similarity 'fixed enumerable
-#      facts' ke liye consistent nahi hoti (chhota fact document bade
-#      documents ke against compete karke haar sakta hai). Isliye in
-#      chand high-value facts ko keyword-match se hamesha guaranteed
-#      inject karte hain, RAG ke upar depend nahi karte.
-# ------------------------------------------------------------------
-DETERMINISTIC_FACTS = {
-    "campus": (
-        "COMSATS University Islamabad (CUI) has 7 physical campuses: "
-        "Islamabad (Principal Seat, established 1998), Abbottabad (2001), "
-        "Wah (2001), Lahore (2002), Attock (2004), Sahiwal (2006), and "
-        "Vehari (2008), plus a Virtual Campus (2012) for online/distance learning."
-    ),
-    "department": (
-        "COMSATS University Islamabad (Islamabad Campus) has 13 departments: "
-        "Architecture, Art & Design, Computer Science, Electrical Engineering, "
-        "Management Sciences, Mathematics, Physics, Chemistry, Bio Sciences, "
-        "Humanities, Meteorology, Economics, and Health Informatics."
-    ),
-    "program": (
-        "COMSATS University Islamabad (Islamabad Campus) offers undergraduate (BS), "
-        "graduate (MS), and doctoral (PhD) programs spread across its 13 departments: "
-        "Architecture, Art & Design, Computer Science, Electrical Engineering, "
-        "Management Sciences, Mathematics, Physics, Chemistry, Bio Sciences, "
-        "Humanities, Meteorology, Economics, and Health Informatics. The exact "
-        "programs offered vary by department — ask about a specific department "
-        "(e.g. 'What programs does Computer Science offer?') for details."
-    ),
-    "scholarship": (
-        "For scholarships, please visit: https://ww2.comsats.edu.pk/scholarships/"
-    ),
-}
-
-
-def get_deterministic_facts(query: str) -> str:
-    import difflib
-    q = query.lower()
-    words = re.findall(r"[a-z]+", q)
-    matched = []
-    for kw, fact in DETERMINISTIC_FACTS.items():
-        # Pehle exact/prefix match try karo (fast)
-        if re.search(rf"\b{kw}", q):
-            matched.append(fact)
-            continue
-        # Fallback: typo-tolerant fuzzy match (jaise "shcolorships",
-        # "scholorships" — "scholarship" spelling exact na ho tab bhi match ho)
-        if any(difflib.SequenceMatcher(None, kw, w).ratio() > 0.75 for w in words):
-            matched.append(fact)
-    return "\n\n".join(matched)
-
-
-# ------------------------------------------------------------------
-# 4.6) Force-include real content — kuch topics (jaise scholarships) mein
-#      RAG retrieval consistently weak/unreliable hai (bohat saari alag
-#      pages hain, embedding kisi ek ko highest score de deta hai baaki
-#      chhoot jati hain). Isliye in topics ke liye hum poora real scraped
-#      content force-include karte hain (guessed/hardcoded fact nahi,
-#      asli scraped page ka text), taake accuracy guaranteed rahe.
-# ------------------------------------------------------------------
-FORCE_INCLUDE_TOPICS = {}
-MAX_FORCE_INCLUDE_CHARS = 1500  # per document, taake prompt bohat bara na ho jaye
-
-
-def get_force_included_context(query: str) -> str:
-    q = query.lower()
-    parts = []
-    for pattern, url_substrings in FORCE_INCLUDE_TOPICS.items():
-        if not re.search(pattern, q):
-            continue
-        for sub in url_substrings:
-            for url, content in url_to_content.items():
-                if sub in url:
-                    parts.append(content[:MAX_FORCE_INCLUDE_CHARS])
-                    break
-    return "\n\n---\n\n".join(parts)
-
-
-# Kuch high-value OFFICIAL resources jo hamesha jawab ke sath dikhne
-# chahiye jab related topic poocha jaye — chahe download-intent word na ho.
-DETERMINISTIC_RESOURCES = {
-    r"\badmission\b.*\bfall\b|\bfall\b.*\badmission\b|\badmissions?\b": [
-        "https://islamabad.comsats.edu.pk/NEFiles/Admission-fall-2026-isb.jpg",
-    ],
-}
-
-
-def get_deterministic_resources(query: str) -> list:
-    q = query.lower()
-    matched = []
-    for pattern, urls in DETERMINISTIC_RESOURCES.items():
-        if re.search(pattern, q):
-            matched.extend(urls)
-    return matched
-
+    log.info("Vector store pehle se mojood hai, dobara build nahi kar raha.")
 
 # ------------------------------------------------------------------
 # 5) Reranker (top-k results ko query ke sath best-match order mein lata hai)
@@ -199,11 +140,9 @@ def retrieve_context(query: str, fetch_k: int = 20, k: int = 8, top_n: int = 6) 
 
     Deterministic facts (agar query match kare) hamesha context mein
     upar add hote hain — RAG retrieval fail ho bhi jaye to ye guaranteed
-    correct rahenge. Force-included real content (scholarships jaisi
-    weak-retrieval topics ke liye) bhi isi tarah guaranteed include hota hai.
+    correct rahenge.
     """
     deterministic = get_deterministic_facts(query)
-    forced = get_force_included_context(query)
 
     results = vector_store.max_marginal_relevance_search(query, k=k, fetch_k=fetch_k)
     top_docs = []
@@ -216,17 +155,33 @@ def retrieve_context(query: str, fetch_k: int = 20, k: int = 8, top_n: int = 6) 
     parts = []
     if deterministic:
         parts.append(deterministic)
-    if forced:
-        parts.append(forced)
     parts.extend(top_docs)
 
     return "\n\n---\n\n".join(parts)
 
 
 # ------------------------------------------------------------------
-# 6) Groq model + simple prompt
+# 6) Groq model — lazily created (sirf jab pehli dafa zaroorat ho).
+#    Isse vector-store build/import bina GROQ_API_KEY ke bhi chalta hai.
 # ------------------------------------------------------------------
-model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+_model = None
+
+
+def get_model():
+    """Return the Groq chat model, or None when it cannot be created
+    (no API key, or client construction failed)."""
+    global _model
+    if _model is not None:
+        return _model
+    if not os.environ.get("GROQ_API_KEY"):
+        return None
+    try:
+        _model = ChatGroq(model=GROQ_MODEL, temperature=0)
+    except Exception as e:
+        log.warning("Could not create Groq client: %s", e)
+        return None
+    return _model
+
 
 SYSTEM_PROMPT = (
     "You are CUI Assistant, a helpful chatbot for COMSATS University Islamabad. "
@@ -259,8 +214,20 @@ def ask(query: str) -> str:
     try:
         context = retrieve_context(query)
     except Exception as e:
-        print(f"[retrieval error] {e}")
+        log.warning("[retrieval error] %s", e)
         return "Sorry, mujhe knowledge base search karne mein masla aa raha hai. Thodi dair baad try karein."
+
+    model = get_model()
+    if model is None:
+        if not os.environ.get("GROQ_API_KEY"):
+            return (
+                "AI service configure nahi hai: GROQ_API_KEY set nahi hai. "
+                ".env file mein apni Groq API key add karein, phir dobara try karein."
+            )
+        return (
+            "Sorry, is waqt AI service se connect nahi ho pa raha "
+            "(rate limit ya network issue ho sakta hai). Thodi dair baad try karein."
+        )
 
     prompt = f"""{SYSTEM_PROMPT}
 
@@ -283,8 +250,9 @@ Answer:"""
                 # Rate limit / transient errors ke liye chhoti si wait ke baad
                 # ek dafa retry karo — permanent errors (auth, bad request)
                 # pe retry se koi fayda nahi, seedha fail hone do
-                if attempt == 1 and ("rate" in err_str or "429" in err_str or "timeout" in err_str):
-                    import time
+                if attempt == 1 and (
+                    "rate" in err_str or "429" in err_str or "timeout" in err_str
+                ):
                     time.sleep(3)
                     continue
                 raise
@@ -296,14 +264,14 @@ Answer:"""
         # hamesha answer ke sath append karo agar topic match kare
         resource_links = get_deterministic_resources(query)
         if resource_links:
-            links_text = "\n".join(f"- {url}" for url in resource_links)
+            links_text = "\n".join(f"- {url}" for _, url in resource_links)
             answer = f"{answer}\n\nFor more details:\n{links_text}"
 
         return answer
     except Exception as e:
         # Groq rate limit, network issue, ya koi bhi API error yahan catch hoga —
         # taake pura app crash na ho, user ko friendly message mile
-        print(f"[Groq API error] {e}")
+        log.warning("[Groq API error] %s", e)
         return (
             "Sorry, is waqt AI service se connect nahi ho pa raha "
             "(rate limit ya network issue ho sakta hai). Thodi dair baad try karein."
@@ -322,9 +290,17 @@ if __name__ == "__main__":
     )
 
     while True:
-        user_input = input("You: ")
+        try:
+            user_input = input("You: ")
+        except (EOFError, KeyboardInterrupt):
+            print(
+                "\nCUI Assistant: Thanks for using CUI Assistant! Best of luck with COMSATS. 🎓"
+            )
+            break
         if user_input.lower() == "exit":
-            print("CUI Assistant: Thanks for using CUI Assistant! Best of luck with COMSATS. 🎓")
+            print(
+                "CUI Assistant: Thanks for using CUI Assistant! Best of luck with COMSATS. 🎓"
+            )
             break
 
         answer = ask(user_input)

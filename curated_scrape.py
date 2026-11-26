@@ -18,46 +18,62 @@ OUTPUT:
     output/all_documents.json   -> same format jo comsats_rag.py expect karta hai
 """
 
+import hashlib
+import io
+import json
+import logging
 import os
 import re
-import json
 import time
-import hashlib
-import logging
 
 import requests
 from bs4 import BeautifulSoup
+from pypdf import PdfReader
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; COMSATS-RAG-Bot/1.0; "
-                  "+educational-project-for-chatbot-research)"
+    "+educational-project-for-chatbot-research)"
 }
 REQUEST_DELAY = 1.0
 TIMEOUT = 15
 MAX_RETRIES = 3
 OUTPUT_DIR = "output"
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 log = logging.getLogger("curated_scraper")
 
 
 def fetch_with_retry(session: requests.Session, url: str):
-    """Transient network errors (timeout, connection reset) ke liye retry
-    karta hai — warna ek chhota si glitch bhi us page ko permanently
-    skip kar deta tha."""
+    """Transient network errors (timeout, connection reset) aur HTTP
+    429/5xx ke liye retry karta hai — warna ek chhota si glitch bhi
+    us page ko permanently skip kar deta tha."""
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             resp = session.get(url, timeout=TIMEOUT)
+            if resp.status_code == 429 or resp.status_code >= 500:
+                last_error = f"HTTP {resp.status_code}"
+                if attempt < MAX_RETRIES:
+                    wait = attempt * 2
+                    log.warning(
+                        f"Attempt {attempt} got {last_error} for {url}, retrying in {wait}s..."
+                    )
+                    time.sleep(wait)
+                    continue
             return resp
         except requests.RequestException as e:
             last_error = e
             if attempt < MAX_RETRIES:
                 wait = attempt * 2
-                log.warning(f"Attempt {attempt} failed for {url} ({e}), retrying in {wait}s...")
+                log.warning(
+                    f"Attempt {attempt} failed for {url} ({e}), retrying in {wait}s..."
+                )
                 time.sleep(wait)
     log.warning(f"All {MAX_RETRIES} attempts failed for {url}: {last_error}")
     return None
+
 
 # ---------------------------------------------------------------------------
 # CURATED PAGE LIST — yahan edit/add/remove karo jo bhi important lage
@@ -70,32 +86,28 @@ PAGES = [
     ("https://islamabad.comsats.edu.pk/rector-comsats.aspx", "about"),
     ("https://islamabad.comsats.edu.pk/incharge-campus.aspx", "about"),
     ("https://islamabad.comsats.edu.pk/contact-us.aspx", "contacts"),
-
     # Admissions
     ("https://islamabad.comsats.edu.pk/comsats-admissions.aspx", "admissions"),
     ("https://islamabad.comsats.edu.pk/prospectus.aspx", "admissions"),
     ("https://islamabad.comsats.edu.pk/fee-structure.aspx", "fees"),
-
     # Academics / Programs / Departments
     ("https://islamabad.comsats.edu.pk/comsats-academics.aspx", "programs"),
     ("https://islamabad.comsats.edu.pk/faculties-and-departments.aspx", "programs"),
     ("https://islamabad.comsats.edu.pk/comsats-departments.aspx", "programs"),
-    ("http://ww2.comsats.edu.pk/cs", "programs"),
-    ("http://ww2.comsats.edu.pk/ee", "programs"),
-    ("http://ww2.comsats.edu.pk/ms", "programs"),
-    ("http://ww2.comsats.edu.pk/math", "programs"),
-    ("http://ww2.comsats.edu.pk/phy", "programs"),
-    ("http://ww2.comsats.edu.pk/chemistry", "programs"),
-    ("http://ww2.comsats.edu.pk/arch", "programs"),
-    ("http://ww2.comsats.edu.pk/artdesign", "programs"),
-    ("http://ww2.comsats.edu.pk/bio", "programs"),
-    ("http://ww2.comsats.edu.pk/humanities", "programs"),
-    ("http://ww2.comsats.edu.pk/Economics", "programs"),
-    ("http://ww2.comsats.edu.pk/hi", "programs"),
-
+    ("https://ww2.comsats.edu.pk/cs", "programs"),
+    ("https://ww2.comsats.edu.pk/ee", "programs"),
+    ("https://ww2.comsats.edu.pk/ms", "programs"),
+    ("https://ww2.comsats.edu.pk/math", "programs"),
+    ("https://ww2.comsats.edu.pk/phy", "programs"),
+    ("https://ww2.comsats.edu.pk/chemistry", "programs"),
+    ("https://ww2.comsats.edu.pk/arch", "programs"),
+    ("https://ww2.comsats.edu.pk/artdesign", "programs"),
+    ("https://ww2.comsats.edu.pk/bio", "programs"),
+    ("https://ww2.comsats.edu.pk/humanities", "programs"),
+    ("https://ww2.comsats.edu.pk/Economics", "programs"),
+    ("https://ww2.comsats.edu.pk/hi", "programs"),
     # Research
     ("https://islamabad.comsats.edu.pk/comsats-research.aspx", "research"),
-
     # Facilities / Campus life
     ("https://islamabad.comsats.edu.pk/campus-life.aspx", "facilities"),
     ("https://islamabad.comsats.edu.pk/junaid-zaidi-library.aspx", "facilities"),
@@ -105,15 +117,19 @@ PAGES = [
     ("https://islamabad.comsats.edu.pk/comsats-cafeteria.aspx", "facilities"),
     ("https://islamabad.comsats.edu.pk/international-students.aspx", "facilities"),
     ("https://islamabad.comsats.edu.pk/halls-reservation-schedule.aspx", "facilities"),
-
     # Scholarships / Career
     # NOTE: "ww2.comsats.edu.pk/scholarships" (old) was a shallow landing
     # page with just "Read More" links, no real content. Ye 2 pages asli
     # scholarship criteria/details rakhte hain.
-    ("https://ww2.comsats.edu.pk/scholarships/scholarships-and-support-programs.aspx", "scholarships"),
-    ("https://ww2.comsats.edu.pk/scholarships/internal-scholarships-data.aspx", "scholarships"),
-    ("http://ww2.comsats.edu.pk/cdc", "scholarships"),
-
+    (
+        "https://ww2.comsats.edu.pk/scholarships/scholarships-and-support-programs.aspx",
+        "scholarships",
+    ),
+    (
+        "https://ww2.comsats.edu.pk/scholarships/internal-scholarships-data.aspx",
+        "scholarships",
+    ),
+    ("https://ww2.comsats.edu.pk/cdc", "scholarships"),
     # News / Downloads
     ("https://islamabad.comsats.edu.pk/comsats-news.aspx", "news"),
     ("https://islamabad.comsats.edu.pk/downloads.aspx", "policies"),
@@ -143,7 +159,10 @@ MANUAL_FACTS = [
 
 # Kuch important PDFs bhi (fee refund policy waghera)
 PDF_PAGES = [
-    ("https://islamabad.comsats.edu.pk/NEFiles/Notification-HEC-National-Fee-Refund-Policy-Revised-2024.pdf", "fees"),
+    (
+        "https://islamabad.comsats.edu.pk/NEFiles/Notification-HEC-National-Fee-Refund-Policy-Revised-2024.pdf",
+        "fees",
+    ),
 ]
 
 
@@ -154,7 +173,7 @@ def decode_cf_email(cfemail: str) -> str:
     try:
         r = int(cfemail[:2], 16)
         return "".join(
-            chr(int(cfemail[i:i + 2], 16) ^ r) for i in range(2, len(cfemail), 2)
+            chr(int(cfemail[i : i + 2], 16) ^ r) for i in range(2, len(cfemail), 2)
         )
     except Exception:
         return ""
@@ -164,15 +183,33 @@ def decode_cf_email(cfemail: str) -> str:
 # (resource links, statutes list, downloads-modal items). Ye normal user ko
 # bhi kam matlab ke hain aur RAG chunks mein sirf noise add karte hain.
 FOOTER_JUNK_EXACT = {
-    "resources", "hec refund policy", "pollens online",
-    "sops for degree verification", "ug admission", "graduate admission",
-    "student life", "rules & regulations", "hall reservation",
-    "telephone directory", "readers society", "qec", "support",
-    "office 365 setup", "secp guide", "statutory info", "cui act - 2018",
-    "rules of business of the meetings of", "cui authorities - 2018",
+    "resources",
+    "hec refund policy",
+    "pollens online",
+    "sops for degree verification",
+    "ug admission",
+    "graduate admission",
+    "student life",
+    "rules & regulations",
+    "hall reservation",
+    "telephone directory",
+    "readers society",
+    "qec",
+    "support",
+    "office 365 setup",
+    "secp guide",
+    "statutory info",
+    "cui act - 2018",
+    "rules of business of the meetings of",
+    "cui authorities - 2018",
     "statutes of the authorities, committees,",
-    "principal officers, and teachers of cui - 2019", "elections",
-    "follow us", "designed by", "it center", "close", "×",
+    "principal officers, and teachers of cui - 2019",
+    "elections",
+    "follow us",
+    "designed by",
+    "it center",
+    "close",
+    "×",
 }
 
 
@@ -187,11 +224,19 @@ def clean_text(soup: BeautifulSoup) -> str:
     # knowledge base mein bhi nahi hone chahiye
     for tag in soup.find_all(attrs={"aria-hidden": "true"}):
         tag.decompose()
-    for tag in soup.find_all(style=re.compile(r"display\s*:\s*none", re.I)):
+    for tag in soup.find_all(style=re.compile(r"display\s*:\s*none", re.IGNORECASE)):
         tag.decompose()
     for selector in [
-        {"class_": re.compile(r"(navbar|breadcrumb|sidebar|modal|popup|dialog)", re.I)},
-        {"id": re.compile(r"(navbar|breadcrumb|sidebar|modal|popup|dialog)", re.I)},
+        {
+            "class_": re.compile(
+                r"(navbar|breadcrumb|sidebar|modal|popup|dialog)", re.IGNORECASE
+            )
+        },
+        {
+            "id": re.compile(
+                r"(navbar|breadcrumb|sidebar|modal|popup|dialog)", re.IGNORECASE
+            )
+        },
     ]:
         for tag in soup.find_all(True, **selector):
             tag.decompose()
@@ -218,7 +263,7 @@ def clean_text(soup: BeautifulSoup) -> str:
 
     cleaned = []
     for l in lines:
-        if any(re.match(p, l, re.I) for p in boilerplate_patterns):
+        if any(re.match(p, l, re.IGNORECASE) for p in boilerplate_patterns):
             continue
         if l.lower() in FOOTER_JUNK_EXACT:
             continue
@@ -276,7 +321,9 @@ def scrape():
                 all_documents.append(doc)
                 log.info(f"[{category}] {url} ({len(content)} chars)")
             else:
-                log.warning(f"Skipped (too little content, {len(content)} chars): {url}")
+                log.warning(
+                    f"Skipped (too little content, {len(content)} chars): {url}"
+                )
                 failed_urls.append(url)
         except Exception as e:
             log.warning(f"Failed {url}: {e}")
@@ -290,8 +337,6 @@ def scrape():
             time.sleep(REQUEST_DELAY)
             continue
         try:
-            from pypdf import PdfReader
-            import io
             reader = PdfReader(io.BytesIO(resp.content))
             text = "\n".join(page.extract_text() or "" for page in reader.pages)
             if text.strip():
@@ -320,7 +365,9 @@ def scrape():
     with open(f"{OUTPUT_DIR}/all_documents.json", "w", encoding="utf-8") as f:
         json.dump(all_documents, f, ensure_ascii=False, indent=2)
 
-    log.info(f"DONE. {len(all_documents)} curated documents saved to {OUTPUT_DIR}/all_documents.json")
+    log.info(
+        f"DONE. {len(all_documents)} curated documents saved to {OUTPUT_DIR}/all_documents.json"
+    )
     if failed_urls:
         log.warning(f"{len(failed_urls)} URL(s) failed / skipped:")
         for u in failed_urls:
