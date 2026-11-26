@@ -58,10 +58,10 @@ def get_deterministic_facts(query: str) -> str:
 # than scraped text (fee/admission text can mix batches and go stale).
 # Each entry is a (title, url) pair.
 DETERMINISTIC_RESOURCES = {
-    r"\badmission\b.*\bfall\b|\bfall\b.*\badmission\b|\badmissions?\b": [
+    r"\badmissions?\b": [
         (
-            "Fall 2026 Admission Notice (Official)",
-            "https://islamabad.comsats.edu.pk/NEFiles/Admission-fall-2026-isb.jpg",
+            "Spring 2027 Admission Notice (Official)",
+            "https://comsats.edu.pk/NEFiles/Admission-11th-Nov.jpeg",
         ),
     ],
 }
