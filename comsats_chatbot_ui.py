@@ -36,7 +36,11 @@ CHROMA_DIR = str(BASE_DIR / "chroma_comsats_db")
 # GROQ_MODEL if Groq retires this one too.
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
-st.set_page_config(page_title="CUI Assistant", page_icon="🎓")
+st.set_page_config(
+    page_title="CUI Assistant | COMSATS University Islamabad",
+    page_icon="🎓",
+    layout="centered",
+)
 
 # ------------------------------------------------------------------
 # Setup (ek hi baar chalta hai, Streamlit cache karta hai)
@@ -255,7 +259,65 @@ Answer:"""
 # Streamlit UI
 # ------------------------------------------------------------------
 
-st.title("🎓 COMSATS University Islamabad")
+# --- COMSATS portal styling (institutional blue, like admissions.comsats.edu.pk) ---
+LOGO_URL = "https://www.comsats.edu.pk/images/logo.png"
+ADMISSIONS_URL = "https://admissions.comsats.edu.pk"
+
+st.markdown(
+    """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header[data-testid="stHeader"] {background: transparent;}
+    .stApp {background: #f5f7fd;}
+    .block-container {padding-top: 1.2rem; max-width: 780px;}
+    .cui-header {display: flex; align-items: center; gap: 14px; background: #ffffff; border: 1px solid #e3e9f7; border-radius: 16px; padding: 12px 18px; box-shadow: 0 1px 4px rgba(15, 37, 87, 0.06);}
+    .cui-header img {height: 54px; width: auto;}
+    .cui-title {font-size: 21px; font-weight: 800; color: #0f2557; line-height: 1.15;}
+    .cui-subtitle {font-size: 11px; letter-spacing: 2.5px; color: #5b6b8c; font-weight: 700; margin-top: 2px;}
+    .cui-apply {margin-left: auto; background: #1d4ed8; color: #ffffff !important; padding: 10px 20px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none; box-shadow: 0 4px 14px rgba(29, 78, 216, 0.35); white-space: nowrap;}
+    .cui-apply:hover {background: #1e40af; color: #ffffff !important;}
+    .cui-hero {background: linear-gradient(115deg, #0a2a6b 0%, #123a8f 55%, #1d4ed8 100%); border-radius: 20px; padding: 30px 28px 26px; color: #ffffff; margin-top: 14px; position: relative; overflow: hidden;}
+    .cui-hero-dots {position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.28) 1.2px, transparent 1.2px); background-size: 22px 22px; opacity: 0.35;}
+    .cui-hero-inner {position: relative;}
+    .cui-badge {display: inline-flex; align-items: center; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.35); border-radius: 999px; padding: 6px 14px; font-size: 11px; letter-spacing: 2px; font-weight: 700;}
+    .cui-badge-dot {width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 8px;}
+    .cui-hero h1 {font-size: 40px; line-height: 1.08; font-weight: 800; margin: 16px 0 10px; color: #ffffff;}
+    .cui-hero p {color: #c7d6ff; font-size: 15px; line-height: 1.55; margin: 0; max-width: 560px;}
+    [data-testid="stChatMessage"] {background: #ffffff; border: 1px solid #e3e9f7; border-radius: 16px; box-shadow: 0 1px 3px rgba(15, 37, 87, 0.05);}
+    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {background: #1d4ed8; border-color: #1d4ed8; color: #ffffff;}
+    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) p {color: #ffffff;}
+    [data-testid="stButton"] > button {background: #ffffff; color: #1d4ed8; border: 1.5px solid #c7d6ff; border-radius: 999px; font-weight: 600; box-shadow: 0 1px 3px rgba(15, 37, 87, 0.06);}
+    [data-testid="stButton"] > button:hover {background: #1d4ed8; color: #ffffff; border-color: #1d4ed8;}
+    [data-testid="stButton"] > button:focus {box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.25); outline: none;}
+    .cui-footer {text-align: center; color: #5b6b8c; font-size: 12px; margin-top: 26px; padding-bottom: 10px;}
+    .cui-footer a {color: #1d4ed8; text-decoration: none; font-weight: 600;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    f"""
+    <div class="cui-header">
+      <img src="{LOGO_URL}" alt="COMSATS University Islamabad logo" onerror="this.style.display='none'">
+      <div>
+        <div class="cui-title">COMSATS University Islamabad</div>
+        <div class="cui-subtitle">CUI ASSISTANT</div>
+      </div>
+      <a class="cui-apply" href="{ADMISSIONS_URL}" target="_blank">Apply now</a>
+    </div>
+    <div class="cui-hero">
+      <div class="cui-hero-dots"></div>
+      <div class="cui-hero-inner">
+        <span class="cui-badge"><span class="cui-badge-dot"></span>ADMISSIONS OPEN AT 7 OF 7 CAMPUSES</span>
+        <h1>Become Pakistan's<br>next great COMSIAN</h1>
+        <p>Ask about admissions, programs, fees, scholarships and campuses at seven campuses of a top-ranked research university. One question, one clear answer.</p>
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -310,3 +372,14 @@ if user_input:
     st.session_state.messages.append(
         {"role": "assistant", "content": answer, "sources": sources}
     )
+
+st.markdown(
+    """
+    <div class="cui-footer">
+      Answers come from official COMSATS pages. Confirm dates and fees on the
+      <a href="https://admissions.comsats.edu.pk" target="_blank">official admission notice</a>
+      or <a href="https://www.comsats.edu.pk" target="_blank">comsats.edu.pk</a>.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
